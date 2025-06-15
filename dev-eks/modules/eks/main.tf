@@ -4,7 +4,7 @@ data "aws_ami" "eks" {
 
   filter {
     name   = "name"
-    values = ["amazon-eks-node-*-v*"]
+    values = ["amazon-eks-node-${var.cluster_version}-v*"]
   }
 }
 
@@ -29,9 +29,12 @@ resource "aws_security_group" "eks_cluster" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name = "${var.cluster_name}-cluster-sg"
-  }
+  tags = merge(
+    {
+      Name = "${var.cluster_name}-cluster-sg"
+    },
+    var.additional_tags
+  )
 }
 
 # EKS Node Group Security Group
@@ -71,19 +74,26 @@ resource "aws_security_group" "eks_nodes" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name = "${var.cluster_name}-nodes-sg"
-  }
+  tags = merge(
+    {
+      Name = "${var.cluster_name}-nodes-sg"
+    },
+    var.additional_tags
+  )
 }
 
 resource "aws_iam_role" "eks_cluster" {
   name = "${var.cluster_name}-eks-cluster-role"
   assume_role_policy = data.aws_iam_policy_document.eks_cluster_assume.json
+
+  tags = var.additional_tags
 }
 
 resource "aws_iam_role" "eks_node" {
   name = "${var.cluster_name}-eks-node-role"
   assume_role_policy = data.aws_iam_policy_document.eks_node_assume.json
+
+  tags = var.additional_tags
 }
 
 data "aws_iam_policy_document" "eks_cluster_assume" {
@@ -129,7 +139,7 @@ resource "aws_iam_role_policy_attachment" "eks_registry_policy" {
 resource "aws_eks_cluster" "this" {
   name     = var.cluster_name
   role_arn = aws_iam_role.eks_cluster.arn
-  version  = "1.28"
+  version  = var.cluster_version
 
   vpc_config {
     subnet_ids              = var.subnet_ids
@@ -139,21 +149,24 @@ resource "aws_eks_cluster" "this" {
     public_access_cidrs     = ["0.0.0.0/0"]
   }
 
-  enabled_cluster_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
+  enabled_cluster_log_types = var.enable_cluster_logs ? var.cluster_log_types : []
 
   depends_on = [
     aws_iam_role_policy_attachment.eks_cluster_policy,
   ]
 
-  tags = {
-    Name = var.cluster_name
-  }
+  tags = merge(
+    {
+      Name = var.cluster_name
+    },
+    var.additional_tags
+  )
 }
 
 resource "aws_launch_template" "lt" {
   name_prefix   = "${var.cluster_name}-lt"
   image_id      = data.aws_ami.eks.id
-  instance_type = "t3.medium"
+  instance_type = var.node_instance_type
   key_name      = var.key_name
 
   vpc_security_group_ids = [aws_security_group.eks_nodes.id]
@@ -166,10 +179,15 @@ resource "aws_launch_template" "lt" {
 
   tag_specifications {
     resource_type = "instance"
-    tags = {
-      Name = "${var.cluster_name}-node"
-    }
+    tags = merge(
+      {
+        Name = "${var.cluster_name}-node"
+      },
+      var.additional_tags
+    )
   }
+
+  tags = var.additional_tags
 }
 
 resource "aws_eks_node_group" "node_group" {
@@ -184,9 +202,9 @@ resource "aws_eks_node_group" "node_group" {
   }
 
   scaling_config {
-    desired_size = 2
-    max_size     = 3
-    min_size     = 1
+    desired_size = var.node_desired_size
+    max_size     = var.node_max_size
+    min_size     = var.node_min_size
   }
 
   update_config {
@@ -200,7 +218,10 @@ resource "aws_eks_node_group" "node_group" {
     aws_iam_role_policy_attachment.eks_registry_policy,
   ]
 
-  tags = {
-    Name = "${var.cluster_name}-node-group"
-  }
+  tags = merge(
+    {
+      Name = "${var.cluster_name}-node-group"
+    },
+    var.additional_tags
+  )
 }

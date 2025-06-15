@@ -33,19 +33,18 @@ resource "kubernetes_config_map" "aws_auth" {
       }
     ])
 
-    mapUsers = yamlencode([
-      {
-        userarn  = "arn:aws:iam::${var.account_id}:user/${var.admin_user}"
+    mapUsers = yamlencode(concat(
+      var.admin_user != "" ? [{
+        userarn  = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/${var.admin_user}"
         username = var.admin_user
         groups   = ["system:masters"]
-      },
-      # Add current user if different from admin_user
-      {
+      }] : [],
+      [{
         userarn  = data.aws_caller_identity.current.arn
         username = "current-user"
         groups   = ["system:masters"]
-      }
-    ])
+      }]
+    ))
   }
 }
 
@@ -58,6 +57,7 @@ resource "local_file" "kubeconfig" {
     region          = var.region
   })
   filename = "${path.module}/kubeconfig"
+  file_permission = "0600"
 }
 
 # Create RBAC for additional access
@@ -74,10 +74,13 @@ resource "kubernetes_cluster_role_binding" "admin_binding" {
     name      = "cluster-admin"
   }
 
-  subject {
-    kind      = "User"
-    name      = var.admin_user
-    api_group = "rbac.authorization.k8s.io"
+  dynamic "subject" {
+    for_each = var.admin_user != "" ? [1] : []
+    content {
+      kind      = "User"
+      name      = var.admin_user
+      api_group = "rbac.authorization.k8s.io"
+    }
   }
 
   subject {

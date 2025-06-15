@@ -17,12 +17,25 @@ terraform {
       source  = "hashicorp/tls"
       version = "~> 4.0"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
+    }
   }
 }
 
 provider "aws" {
   region  = var.region
   profile = var.profile
+
+  default_tags {
+    tags = {
+      Environment = var.environment
+      Project     = var.project
+      Owner       = var.owner
+      ManagedBy   = "terraform"
+    }
+  }
 }
 
 provider "kubernetes" {
