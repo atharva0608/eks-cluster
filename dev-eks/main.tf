@@ -20,6 +20,7 @@ module "vpc" {
   public_subnets  = var.public_subnets
   private_subnets = var.private_subnets
   azs             = var.azs
+  name_prefix     = var.cluster_name
 }
 
 module "bastion" {
@@ -34,5 +35,6 @@ module "eks" {
   cluster_name       = var.cluster_name
   subnet_ids         = module.vpc.private_subnet_ids
   key_name           = aws_key_pair.eks_key.key_name
+  vpc_id             = module.vpc.vpc_id
   bastion_sg_id      = module.bastion.bastion_sg_id
 }
